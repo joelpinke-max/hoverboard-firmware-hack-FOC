@@ -43,7 +43,7 @@ jobs:
               p = rf"^\s*#define\s+{key}\s+{val}\b"
               if not re.search(p,s,re.M): raise SystemExit("Configuration invalid: " + key)
           for key in ("FEEDBACK_SERIAL_USART2","DEBUG_SERIAL_USART3","DEBUG_SERIAL_PROTOCOL"):
-              if not re.search(rf"^#define\s+{key}\b",s,re.M):
+              if not re.search(rf"^\s*#define\s+{key}\b",s,re.M):
                   raise SystemExit("Configuration invalid: "+key)
           if not re.search(r"^\s*#define\s+FLASH_WRITE_KEY\s+0x2102\b",s,re.M):
               raise SystemExit("EEPROM version key missing")
