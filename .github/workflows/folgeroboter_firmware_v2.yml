@@ -1,0 +1,76 @@
+name: Folgeroboter Firmware v2 (USART)
+
+on:
+  push:
+    branches:
+      - folgeroboter/firmware-v2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout tested firmware fork
+        uses: actions/checkout@v4
+
+      - name: ARM toolchain
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '9-2019-q4'
+
+      - name: Verify expected robot configuration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s = Path("Inc/config.h").read_text()
+          values = dict(
+              CTRL_TYP_SEL="FOC_CTRL",
+              CTRL_MOD_REQ="SPD_MODE",
+              I_MOT_MAX="3",
+              I_DC_MAX="5",
+              N_MOT_MAX="500",
+              FIELD_WEAK_ENA="0",
+              CONTROL_SERIAL_USART2="0",
+              SERIAL_TIMEOUT="60",
+          )
+          for key, val in values.items():
+              p = rf"^\s*#define\s+{key}\s+{val}\b"
+              if not re.search(p,s,re.M): raise SystemExit("Configuration invalid: " + key)
+          for key in ("FEEDBACK_SERIAL_USART2","DEBUG_SERIAL_USART3","DEBUG_SERIAL_PROTOCOL"):
+              if not re.search(rf"^#define\s+{key}\b",s,re.M):
+                  raise SystemExit("Configuration invalid: "+key)
+          if not re.search(r"^\s*#define\s+FLASH_WRITE_KEY\s+0x2102\b",s,re.M):
+              raise SystemExit("EEPROM version key missing")
+          print("Firmware v2 configuration OK")
+          PY
+
+      - name: Build actual robot USART variant
+        run: make -e VARIANT=VARIANT_USART -j2
+
+      - name: Package built firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build/hover.elf
+          test -s build/hover.bin
+          test -s build/hover.hex
+          arm-none-eabi-size build/hover.elf
+          mkdir -p firmware-v2
+          cp build/hover.elf build/hover.bin build/hover.hex firmware-v2/
+          cp Inc/config.h firmware-v2/config.h
+          printf '%s\n' "$GITHUB_SHA" > firmware-v2/commit.txt
+          (cd firmware-v2 && sha256sum hover.elf hover.bin hover.hex config.h > SHA256SUMS.txt)
+
+      - name: Upload flashable firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: Folgeroboter_v2_USART_Firmware
+          path: firmware-v2/
+          retention-days: 30
+          if-no-files-found: error
