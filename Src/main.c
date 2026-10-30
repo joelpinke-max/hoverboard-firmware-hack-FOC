@@ -179,9 +179,32 @@ static uint16_t rate = RATE; // Adjustable rate to support multiple drive modes 
 #endif
 
 
+// Initialise only the provisional power-latch GPIO before motor peripherals.
+static void Folgeroboter_EarlyLatch(void) {
+  GPIO_InitTypeDef gpio = {0};
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  // Preload the output value before switching the pin to output mode.
+  HAL_GPIO_WritePin(OFF_PORT, OFF_PIN, GPIO_PIN_SET);
+  gpio.Pin = OFF_PIN;
+  gpio.Mode = GPIO_MODE_OUTPUT_PP;
+  gpio.Pull = GPIO_NOPULL;
+  gpio.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(OFF_PORT, &gpio);
+}
+
 int main(void) {
 
   HAL_Init();
+  Folgeroboter_EarlyLatch();
+#if FOLGEROBOTER_SAFE_START
+  // Latched-power only. No motor GPIOs, PWM, timers or FOC are initialised.
+  // Unverified PA5 is the ONLY pin actively driven by this test program.
+  HAL_Delay(FOLGEROBOTER_SAFE_ON_MS);
+  HAL_GPIO_WritePin(OFF_PORT, OFF_PIN, GPIO_PIN_RESET);
+  while (1) { HAL_Delay(100); }
+#endif
   __HAL_RCC_AFIO_CLK_ENABLE();
   HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
   /* System interrupt init*/
@@ -211,7 +234,7 @@ int main(void) {
   MX_ADC2_Init();
   BLDC_Init();        // BLDC Controller Init
 
-  HAL_GPIO_WritePin(OFF_PORT, OFF_PIN, GPIO_PIN_SET);   // Activate Latch
+  // The latch was set before peripheral initialisation (immediately after HAL_Init).
   Input_Lim_Init();   // Input Limitations Init
   Input_Init();       // Input Init
 
