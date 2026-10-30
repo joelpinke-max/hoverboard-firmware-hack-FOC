@@ -153,6 +153,31 @@
 #define CHARGER_PORT GPIOA
 #endif
 
+// Power, button, buzzer and ADC input pins may be independently overridden.
+// Defaults are NOT validated for the new replacement board.
+#if FOLGEROBOTER_PINOUT_CUSTOM
+  #undef OFF_PIN
+  #undef OFF_PORT
+  #define OFF_PIN       FOLGEROBOTER_LATCH_PIN
+  #define OFF_PORT      FOLGEROBOTER_LATCH_PORT
+  #undef BUTTON_PIN
+  #undef BUTTON_PORT
+  #define BUTTON_PIN    FOLGEROBOTER_BUTTON_PIN
+  #define BUTTON_PORT   FOLGEROBOTER_BUTTON_PORT
+  #undef BUZZER_PIN
+  #undef BUZZER_PORT
+  #define BUZZER_PIN    FOLGEROBOTER_BUZZER_PIN
+  #define BUZZER_PORT   FOLGEROBOTER_BUZZER_PORT
+  #undef CHARGER_PIN
+  #undef CHARGER_PORT
+  #define CHARGER_PIN   FOLGEROBOTER_CHARGER_PIN
+  #define CHARGER_PORT  FOLGEROBOTER_CHARGER_PORT
+  #undef DCLINK_PIN
+  #undef DCLINK_PORT
+  #define DCLINK_PIN    FOLGEROBOTER_DCLINK_PIN
+  #define DCLINK_PORT   FOLGEROBOTER_DCLINK_PORT
+#endif
+
 #if defined(CONTROL_PPM_LEFT)
 #define PPM_PIN             GPIO_PIN_3
 #define PPM_PORT            GPIOA
