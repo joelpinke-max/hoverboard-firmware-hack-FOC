@@ -63,7 +63,26 @@
  * 0 - Default board type
  * 1 - Alternate board type with different pin mapping for DCLINK, Buzzer and ON/OFF, Button and Charger
 */
-#define BOARD_VARIANT           0         // change if board with alternate pin mapping
+#define BOARD_VARIANT           0         // provisional baseline only
+// Folgeroboter safe replacement-board bring-up; pin assignments UNVERIFIED.
+#define FOLGEROBOTER_SAFE_START             1
+#define FOLGEROBOTER_SAFE_ON_MS              8000
+#define FOLGEROBOTER_PINOUT_CUSTOM           1
+#define FOLGEROBOTER_BOARD_WIRING_VERIFIED   0
+// Individual board-pin definitions: stock variant-0 guesses, not yet PCB-traced.
+#define FOLGEROBOTER_LATCH_PORT   GPIOA
+#define FOLGEROBOTER_LATCH_PIN    GPIO_PIN_5
+#define FOLGEROBOTER_BUTTON_PORT  GPIOA
+#define FOLGEROBOTER_BUTTON_PIN   GPIO_PIN_1
+#define FOLGEROBOTER_BUZZER_PORT  GPIOA
+#define FOLGEROBOTER_BUZZER_PIN   GPIO_PIN_4
+#define FOLGEROBOTER_CHARGER_PORT GPIOA
+#define FOLGEROBOTER_CHARGER_PIN  GPIO_PIN_12
+#define FOLGEROBOTER_DCLINK_PORT  GPIOC
+#define FOLGEROBOTER_DCLINK_PIN   GPIO_PIN_2
+#if !FOLGEROBOTER_SAFE_START && !FOLGEROBOTER_BOARD_WIRING_VERIFIED
+#error "Verify power-stage PWM, sensing, Hall, battery and latch pinout first."
+#endif
 // ######################## END OF BOARD VARIANT ###############################
 
 // ############################### BATTERY ###############################
