@@ -1,0 +1,81 @@
+name: Folgeroboter v4 - USART3 with guarded button (UNVERIFIED POWER STAGE)
+
+on:
+  push:
+    branches:
+      - folgeroboter/firmware-v4-button-guard-20261112
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout firmware
+        uses: actions/checkout@v4
+      - name: Install ARM GCC
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '9-2019-q4'
+      - name: Check UART3 and fail-closed button guard
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          c = Path('Inc/config.h').read_text()
+          u = c[c.index('#ifdef VARIANT_USART'):c.index('END OF VARIANT_USART SETTINGS')]
+          for key in ('CONTROL_SERIAL_USART3','FEEDBACK_SERIAL_USART3'):
+              assert re.search(r'^\s*#define\s+'+key+r'\b',u,re.M), key
+          for key in ('CONTROL_SERIAL_USART2','FEEDBACK_SERIAL_USART2'):
+              assert not re.search(r'^\s*#define\s+'+key+r'\b',u,re.M), key
+          for key in ('DEBUG_SERIAL_USART3','DEBUG_SERIAL_PROTOCOL'):
+              assert not re.search(r'^\s*#define\s+'+key+r'\b',c[:c.index('VARIANT_ADC SETTINGS')],re.M), key
+          for key in ('FOLGEROBOTER_BUTTON_RELEASE_GUARD','FOLGEROBOTER_REQUIRE_BUTTON_RELEASE_FOR_MOTORS'):
+              assert re.search(r'^\s*#define\s+'+key+r'\s+1\b',c,re.M), key
+          assert 'FOLGEROBOTER_BUTTON_STARTUP_TIMEOUT_MS 1500u' in c
+          m = Path('Src/main.c').read_text()
+          v = Path('Src/util.c').read_text()
+          assert 'folgeroboter_button_release_seen' in m and 'folgeroboter_button_release_seen' in v
+          assert 'FOLGEROBOTER_BUTTON_STARTUP_TIMEOUT_MS' in m
+          assert 'previous_pressed' in v and 'pressed_since_ms' in v
+          print('V4 software interlock and USART3 preflight passed')
+          PY
+      - name: Compile full FOC USART variant
+        run: make -e VARIANT=VARIANT_USART -j2
+      - name: Package experimental firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build/hover.elf
+          test -s build/hover.bin
+          test -s build/hover.hex
+          arm-none-eabi-size build/hover.elf
+          mkdir -p firmware-v4
+          cp build/hover.elf build/hover.bin build/hover.hex firmware-v4/
+          cp Inc/config.h firmware-v4/config.h
+          printf '%s\n' "$GITHUB_SHA" > firmware-v4/commit.txt
+          cat > firmware-v4/README_BEFORE_FLASHING.txt <<'EOF'
+          FOLGEROBOTER V4 – FULL FOC FIRMWARE, EXPERIMENTAL HARDWARE COMPATIBILITY.
+
+          FIX: startup no longer loops forever while PA1 stays HIGH.
+          FIX: button press handler no longer waits forever while PA1 stays HIGH.
+          SAFETY: Motor arming requires actual LOW level on PA1 since startup.
+          If PA1 is permanently HIGH, the drive remains disarmed even if UART
+          communications start working. The physical power button still will
+          not work until its true MCU GPIO and polarity are confirmed.
+          All PWM, Hall, current-sense and power latch mappings are UNVERIFIED.
+          Battery-powered testing is NOT approved based on the compiled binary.
+          A known-good physical supply disconnect and electrical validation
+          are required before energizing the power stage.
+          EOF
+          (cd firmware-v4 && sha256sum hover.elf hover.bin hover.hex config.h > SHA256SUMS.txt)
+      - name: Upload experimental binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: Folgeroboter_v4_USART3_button_guard_UNVERIFIED_POWER_STAGE
+          path: firmware-v4/
+          retention-days: 30
+          if-no-files-found: error
