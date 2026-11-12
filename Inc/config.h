@@ -111,6 +111,20 @@
 
 // ############################### STARTUP DELAY ################################
 #define STARTUP_DELAY_MS        500       // startup delay [ms] before power latch is activated. Prevents spurious power-on from brief supply glitches (e.g. UART back-powering).
+
+/* Folgeroboter V4: PB10/PB11 USART3 firmware with a non-blocking PA1 button guard.
+ * The measured PA1 stays HIGH both when the external 34V button is released
+ * and when pressed. Do not infer that this signal is the real button input.
+ *
+ * If PA1 is continuously HIGH, proceed past the startup wait, but refuse
+ * motor arming until a LOW has actually been observed on this input.
+ * This is still the FULL two-motor FOC firmware, but it fails closed on
+ * an unresolved power-button input. The power button cannot be made functional
+ * through software while no valid GPIO transition is available.
+ */
+#define FOLGEROBOTER_BUTTON_STARTUP_TIMEOUT_MS 1500u
+#define FOLGEROBOTER_BUTTON_RELEASE_GUARD 1
+#define FOLGEROBOTER_REQUIRE_BUTTON_RELEASE_FOR_MOTORS 1
 // ######################## END OF TEMPERATURE ###############################
 
 // ############################### ODOMETRY ######################################
