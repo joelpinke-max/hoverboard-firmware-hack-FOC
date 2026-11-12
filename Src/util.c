@@ -1575,7 +1575,42 @@ void poweroff(void) {
 }
 
 
+/* A HIGH on the assumed PA1 button input did not change when the external
+ * OFF/ON switch was pressed. Do not treat that static HIGH as a button press.
+ * This state is also a motor-enable interlock read by main.c.
+ */
+volatile uint8_t folgeroboter_button_release_seen = 0;
+
 void poweroffPressCheck(void) {
+#if defined(FOLGEROBOTER_BUTTON_RELEASE_GUARD)
+  /* Non-blocking press/release tracking. Never wait indefinitely for PA1.
+   * A valid release (LOW) must be seen before HIGH can count as a press.
+   * Both short and long (>90ms) presses power off when released; no
+   * power-button-triggered input calibration on this hardware revision.
+   */
+  static uint8_t previous_pressed = 0;
+  static uint32_t pressed_since_ms = 0;
+  const uint8_t pressed = (HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN) == GPIO_PIN_SET);
+  const uint32_t now_ms = HAL_GetTick();
+
+  if (!folgeroboter_button_release_seen) {
+    if (!pressed) {
+      folgeroboter_button_release_seen = 1;
+    }
+    previous_pressed = 0;
+    return;
+  }
+
+  if (pressed && !previous_pressed) {
+    pressed_since_ms = now_ms;
+    enable = 0;  // Do not drive while the power button is being held.
+  } else if (!pressed && previous_pressed) {
+    if ((uint32_t)(now_ms - pressed_since_ms) >= 90u) {
+      poweroff();
+    }
+  }
+  previous_pressed = pressed;
+#else
   #if !defined(VARIANT_HOVERBOARD) && !defined(VARIANT_TRANSPOTTER)
     if(HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN)) {
       uint16_t cnt_press = 0;
@@ -1635,6 +1670,7 @@ void poweroffPressCheck(void) {
       poweroff();                                             // release power-latch
     }
   #endif
+#endif  // FOLGEROBOTER_BUTTON_RELEASE_GUARD
 }
 
 
