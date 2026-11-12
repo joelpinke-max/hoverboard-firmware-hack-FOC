@@ -53,6 +53,10 @@ extern volatile adc_buf_t adc_buffer;
 extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
 
+#if defined(FOLGEROBOTER_REQUIRE_BUTTON_RELEASE_FOR_MOTORS)
+extern volatile uint8_t folgeroboter_button_release_seen;
+#endif
+
 volatile uint8_t uart_buf[200];
 
 // Matlab defines - from auto-code generation
@@ -248,8 +252,22 @@ int main(void) {
     printf("Drive mode %i selected: max_speed:%i acc_rate:%i \r\n", drive_mode, max_speed, rate);
   #endif
 
-  // Loop until button is released
-  while(HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN)) { HAL_Delay(10); }
+  // Original EFeru code waited forever for a LOW on BUTTON_PIN.
+  // On FL:223.2-71010-400, measured PA1 is continuously HIGH. Time out
+  // rather than hanging; motor arming stays locked until actual LOW is seen.
+#if defined(FOLGEROBOTER_BUTTON_RELEASE_GUARD)
+  const uint32_t folgeroboter_button_wait_start = HAL_GetTick();
+  while ((HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN) == GPIO_PIN_SET) &&
+         ((uint32_t)(HAL_GetTick() - folgeroboter_button_wait_start) <
+           FOLGEROBOTER_BUTTON_STARTUP_TIMEOUT_MS)) {
+    HAL_Delay(10);
+  }
+  if (HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN) == GPIO_PIN_RESET) {
+    folgeroboter_button_release_seen = 1;
+  }
+#else
+  while (HAL_GPIO_ReadPin(BUTTON_PORT, BUTTON_PIN)) { HAL_Delay(10); }
+#endif
 
   #ifdef MULTI_MODE_DRIVE
     // Wait until triggers are released. Exit if timeout elapses (to unblock if the inputs are not calibrated)
@@ -268,7 +286,11 @@ int main(void) {
     #ifndef VARIANT_TRANSPOTTER
       // ####### MOTOR ENABLING: Only if the initial input is very small (for SAFETY) #######
       if (enable == 0 && !rtY_Left.z_errCode && !rtY_Right.z_errCode && 
-          ABS(input1[inIdx].cmd) < 50 && ABS(input2[inIdx].cmd) < 50){
+          ABS(input1[inIdx].cmd) < 50 && ABS(input2[inIdx].cmd) < 50
+#if defined(FOLGEROBOTER_REQUIRE_BUTTON_RELEASE_FOR_MOTORS)
+        && folgeroboter_button_release_seen
+#endif
+        ){
         beepShort(6);                     // make 2 beeps indicating the motor enable
         beepShort(4); HAL_Delay(100);
         steerFixdt = speedFixdt = 0;      // reset filters
