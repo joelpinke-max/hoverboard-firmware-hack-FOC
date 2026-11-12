@@ -1,0 +1,85 @@
+name: Folgeroboter v3 – USART3 build candidate (NOT MOTOR APPROVED)
+
+on:
+  push:
+    branches:
+      - folgeroboter/firmware-v3-usart3
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout firmware
+        uses: actions/checkout@v4
+
+      - name: ARM GCC 9 2019-q4
+        uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '9-2019-q4'
+
+      - name: Validate USART3 configuration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          s=Path('Inc/config.h').read_text()
+          u=s[s.index('#ifdef VARIANT_USART'):s.index('END OF VARIANT_USART SETTINGS')]
+          g=s[:s.index('VARIANT_ADC SETTINGS')]
+          for key,value in {'BOARD_VARIANT':'0','CTRL_TYP_SEL':'FOC_CTRL',
+                            'CTRL_MOD_REQ':'SPD_MODE','I_MOT_MAX':'3',
+                            'I_DC_MAX':'5','N_MOT_MAX':'500','SERIAL_TIMEOUT':'60'}.items():
+              if not re.search(r'^\s*#define\s+'+key+r'\s+'+value+r'\b',s,re.M):
+                  raise SystemExit('wrong '+key)
+          for key in ('CONTROL_SERIAL_USART3','FEEDBACK_SERIAL_USART3'):
+              if not re.search(r'^\s*#define\s+'+key+r'\b',u,re.M):
+                  raise SystemExit('missing '+key)
+          for key in ('CONTROL_SERIAL_USART2','FEEDBACK_SERIAL_USART2'):
+              if re.search(r'^\s*#define\s+'+key+r'\b',u,re.M):
+                  raise SystemExit('unexpected '+key)
+          for key in ('DEBUG_SERIAL_USART3','DEBUG_SERIAL_PROTOCOL'):
+              if re.search(r'^\s*#define\s+'+key+r'\b',g,re.M):
+                  raise SystemExit('UART conflict '+key)
+          if not re.search(r'^\s*#define\s+FLASH_WRITE_KEY\s+0x3102\b',u,re.M):
+              raise SystemExit('missing v3 flash key')
+          print('v3 USART3 mapping verified in build configuration')
+          PY
+
+      - name: Build VARIANT_USART
+        run: make -e VARIANT=VARIANT_USART -j2
+
+      - name: Package verified compiler output only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s build/hover.bin
+          test -s build/hover.elf
+          test -s build/hover.hex
+          arm-none-eabi-size build/hover.elf
+          mkdir -p firmware-v3
+          cp build/hover.{bin,elf,hex} firmware-v3/
+          cp Inc/config.h firmware-v3/config.h
+          printf '%s\n' "$GITHUB_SHA" > firmware-v3/commit.txt
+          cat > firmware-v3/READ_BEFORE_FLASHING.txt <<'EOF'
+          EXPERIMENTAL BUILD ONLY.
+          The USART3 software mapping matches PB10/PB11 measurements.
+          This DOES NOT verify motor PWM/gate-driver polarity, Hall sensors,
+          phase-current sensing or emergency-stop behavior on FL-2232-71010-400.
+          The binary still contains active FOC motor code. Do not power test
+          it from the hoverboard battery until the hardware mapping and
+          fault protections have been established by qualified inspection.
+          EOF
+          (cd firmware-v3 && sha256sum hover.elf hover.bin hover.hex config.h > SHA256SUMS.txt)
+
+      - name: Upload experimental build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Folgeroboter_v3_USART3_UNVERIFIED_PINOUT
+          path: firmware-v3/
+          retention-days: 30
+          if-no-files-found: error
